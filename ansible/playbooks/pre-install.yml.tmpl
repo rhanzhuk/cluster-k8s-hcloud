@@ -267,8 +267,13 @@
       ansible.builtin.shell: |
         export KUBECONFIG=/etc/kubernetes/admin.conf
         kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
-      args:
-        creates: /etc/cni/net.d/10-flannel.conflist
+      when: cni_plugin == "flannel"
+
+    - name: Install Calico CNI
+      ansible.builtin.shell: |
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.2/manifests/calico.yaml
+      when: cni_plugin == "calico"
 
     - name: Patch tolerations
       ansible.builtin.shell: |
