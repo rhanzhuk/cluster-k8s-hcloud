@@ -1,0 +1,300 @@
+---
+- name: Install cluster package
+  hosts: k8s-cluster
+  become: true
+
+
+  tasks:
+  - name: Create dir kubelet
+    ansible.builtin.file:
+      path: /etc/systemd/system/kubelet.service.d
+      state: directory
+      
+  - name: Create hetzner-cloud.conf
+    ansible.builtin.copy:
+      dest: /etc/systemd/system/kubelet.service.d/20-hetzner-cloud.conf
+      content: |
+        [Service]
+        Environment="KUBELET_EXTRA_ARGS=--cloud-provider=external"
+    
+  - name: Configurate modules
+    ansible.builtin.copy:
+      dest: /etc/modules-load.d/k8s.conf
+      content: |
+        overlay
+        br_netfilter
+
+  - name: Configurate sysctl
+    ansible.builtin.copy:
+      dest: /etc/sysctl.d/k8s.conf
+      content: |
+        net.bridge.bridge-nf-call-iptables = 1
+        net.ipv4.ip_forward                = 1
+        net.ipv6.conf.default.forwarding   = 1
+
+  - name: Update sysctl
+    ansible.builtin.shell: |
+      sysctl --system
+
+  - name: Install package
+    ansible.builtin.apt:
+      name:
+        - curl
+        - wget
+        - gpg
+        - ca-certificates
+        - conntrack
+      state: present
+      update_cache: true
+
+  - name: Download conteinerd
+    ansible.builtin.get_url:
+      url: https://raw.githubusercontent.com/containerd/containerd/main/containerd.service
+      dest: /usr/lib/systemd/system/
+
+  - name: Reload change
+    ansible.builtin.shell: |
+      systemctl daemon-reload
+
+  - name: Download conteinerd release
+    ansible.builtin.get_url:
+      url: https://github.com/containerd/containerd/releases/download/v1.6.2/containerd-1.6.2-linux-amd64.tar.gz
+      dest: /tmp/containerd-1.6.2-linux-amd64.tar.gz
+      mode: "0644"
+      timeout: 120
+      force: no
+    register: containerd_dl
+    retries: 6
+    delay: 15
+    until: containerd_dl is succeeded
+
+  - name: Unpacking conteinerd
+    ansible.builtin.unarchive:
+      src: "/tmp/containerd-1.6.2-linux-amd64.tar.gz"
+      dest: "/usr/local"
+      remote_src: true
+      creates: "/usr/local/bin/containerd"
+
+  - name: Enable and start containerd
+    ansible.builtin.systemd:
+      name: containerd
+      enabled: true
+      state: started
+      daemon_reload: true
+
+  - name: Download runc bin
+    ansible.builtin.get_url:
+      url: "https://github.com/opencontainers/runc/releases/download/v1.1.6/runc.amd64"
+      dest: "/usr/local/sbin/runc"
+      mode: "0755"
+      timeout: 120
+    retries: 5
+    delay: 10
+    register: runc_dl
+    until: runc_dl is succeeded
+
+  - name: Ensure CNI bin dir exists
+    ansible.builtin.file:
+      path: /opt/cni/bin
+      state: directory
+      owner: root
+      group: root
+      mode: "0755"
+
+  - name: Download cni plugins
+    ansible.builtin.get_url:
+      url: "https://github.com/containernetworking/plugins/releases/download/v1.2.0/cni-plugins-linux-amd64-v1.2.0.tgz"
+      dest: "/tmp/cni-plugins-linux-amd64-v1.2.0.tgz"
+      mode: "0644"
+      timeout: 120
+      force: no
+    register: cniplugins_dl
+    retries: 6
+    delay: 15
+    until: cniplugins_dl is succeeded
+
+  - name: Unpacking cni plugins
+    ansible.builtin.unarchive:
+      src: "/tmp/cni-plugins-linux-amd64-v1.2.0.tgz"
+      dest: "/opt/cni/bin"
+      remote_src: true
+      creates: "/opt/cni/bin/loopback"
+
+  - name: Create dir containerd
+    ansible.builtin.file:
+      path: "/etc/containerd"
+      state: directory
+
+  - name: Create def config
+    ansible.builtin.command: containerd config default
+    register: containerd_default_config
+    changed_when: false
+
+  - name: Write containerd config
+    ansible.builtin.copy:
+      dest: "/etc/containerd/config.toml"
+      content: |
+        {{ containerd_default_config.stdout
+         | regex_replace('SystemdCgroup = false', 'SystemdCgroup = true') }}
+      mode: "0644"
+
+  - name: Restart containerd
+    ansible.builtin.systemd:
+      name: containerd
+      state: restarted
+
+  - name: Create keyrings dir
+    ansible.builtin.file:
+      path: "/etc/apt/keyrings"
+      state: directory
+
+  - name: Download Kubernetes Release.key
+    ansible.builtin.get_url:
+      url: "https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key"
+      dest: "/tmp/k8s-release.key"
+      mode: "0644"
+      timeout: 120
+
+  - name: Daermor Kubernetes key
+    ansible.builtin.command: >
+      gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg /tmp/k8s-release.key
+    args:
+      creates: "/etc/apt/keyrings/kubernetes-apt-keyring.gpg"
+
+  - name: Set permitions
+    ansible.builtin.file:
+      path: "/etc/apt/keyrings/kubernetes-apt-keyring.gpg"
+      mode: "0644"
+      
+  - name: Create dir k8s list
+    ansible.builtin.file:
+      path: "/etc/apt/sources.list.d"
+      state: directory
+
+  - name: Add repo Kubernetes
+    ansible.builtin.copy:
+      dest: "/etc/apt/sources.list.d/kubernetes.list"
+      content: |
+        deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /
+
+  - name: Install kubelet kubeadm kubectl
+    ansible.builtin.apt:
+      name:
+        - kubelet
+        - kubeadm
+        - kubectl
+      state: present
+      update_cache: true
+
+  - name: Hold package
+    ansible.builtin.dpkg_selections:
+      name: "{{ item }}"
+      selection: hold
+    loop:
+      - kubelet
+      - kubeadm
+      - kubectl
+
+  - name: Enable and start
+    ansible.builtin.systemd:
+      name: kubelet
+      enabled: true
+      state: started
+
+- name: Init control plane
+  hosts: k8s-master
+  become: true
+
+  tasks:
+    - name: Kubeadm Init
+      ansible.builtin.command: >
+        kubeadm init
+        --pod-network-cidr=10.244.0.0/16
+        --kubernetes-version=v1.31.0
+        --upload-certs
+        --apiserver-cert-extra-sans {{ master_private_ip }}
+      args:
+        creates: "/etc/kubernetes/admin.conf"
+
+    - name: Create .kube dir
+      ansible.builtin.file:
+        path: "/root/.kube"
+        state: directory
+
+    - name: Configure kubectl for root
+      ansible.builtin.copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/config
+        remote_src: true
+        mode: "0600"
+    
+    - name: Create secret hcloud
+      ansible.builtin.copy:
+        dest: "/tmp/hcloud-secret.yml"
+        content: |
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: hcloud
+            namespace: kube-system
+          stringData:
+            token: "${token}"
+            network: "${network_id}"
+
+    - name: Create secret hcloud-csi
+      ansible.builtin.copy:
+        dest: "/tmp/hcloud-csi-secret.yml"
+        content: |
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: hcloud-csi
+            namespace: kube-system
+          stringData:
+            token: "${token}"
+
+    - name: Apply secrets
+      ansible.builtin.shell: |
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        kubectl apply -f /tmp/hcloud-secret.yml
+        kubectl apply -f /tmp/hcloud-csi-secret.yml
+    
+    - name: Install Cloud controle manager
+      ansible.builtin.command: >
+        kubectl apply -f https://raw.githubusercontent.com/hetznercloud/hcloud-cloud-controller-manager/master/deploy/ccm-networks.yaml
+
+    - name: Install Flannel CNI
+      ansible.builtin.shell: |
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+      args:
+        creates: /etc/cni/net.d/10-flannel.conflist
+
+    - name: Patch tolerations
+      ansible.builtin.shell: |
+        kubectl -n kube-flannel patch ds kube-flannel-ds --type json -p '[{"op":"add","path":"/spec/template/spec/tolerations/-","value":{"key":"node.cloudprovider.kubernetes.io/uninitialized","value":"true","effect":"NoSchedule"}}]'
+        kubectl -n kube-system patch deployment coredns --type json -p '[{"op":"add","path":"/spec/template/spec/tolerations/-","value":{"key":"node.cloudprovider.kubernetes.io/uninitialized","value":"true","effect":"NoSchedule"}}]'
+
+    - name: Install CSI
+      ansible.builtin.command: >
+        kubectl apply -f https://raw.githubusercontent.com/hetznercloud/csi-driver/main/deploy/kubernetes/hcloud-csi.yml
+
+    - name: Join command
+      ansible.builtin.command: kubeadm token create --print-join-command
+      register: kubeadm_join_cmd
+      changed_when: false
+
+    - name: Show join command
+      ansible.builtin.debug:
+        msg: "{{ kubeadm_join_cmd.stdout }}"
+
+- name: Init worker node
+  hosts: k8s-workers
+  become: true
+  
+  tasks:
+    - name: Join cluster
+      ansible.builtin.command: >
+        {{ hostvars[groups['k8s-master'][0]].kubeadm_join_cmd.stdout }}
+      args:
+        creates: /etc/kubernetes/kubelet.conf

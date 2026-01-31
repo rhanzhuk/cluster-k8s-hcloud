@@ -1,0 +1,18 @@
+[k8s-master]
+master-1 ansible_host=${master_1_pub_ip}
+
+
+[k8s-workers]
+worker-1 ansible_host=${worker_1_pub_ip}
+worker-2 ansible_host=${worker_2_pub_ip}
+
+
+[k8s-cluster:children]
+k8s-master
+k8s-workers
+
+[all:vars]
+ansible_user=root
+ansible_ssh_private_key_file=~/.ssh/id_rsa
+ansible_ssh_common_args=-o StrictHostKeyChecking=accept-new
+master_private_ip=${master_1_priv_ip}

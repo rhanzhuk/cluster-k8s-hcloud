@@ -1,0 +1,18 @@
+#cloud-config
+
+#write_files:
+#  - path: /etc/netplan/60-floating-ip.yaml
+#    content: |
+#      network:
+#        version: 2
+#        renderer: networkd
+#        ethernets:
+#          eth0:
+#            addresses:
+#              - ${floating_ip}/32
+
+runcmd:
+  - apt-get update -y
+  - apt-get dist-upgrade -y
+  - apt-get install -y conntrack curl wget gpg ca-certificates
+  - reboot
