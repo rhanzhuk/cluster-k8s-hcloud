@@ -56,7 +56,7 @@ resource "hcloud_server_network" "worker_2" {
   ip         = "10.98.0.21"
 }
 
-
+# servers
 resource "hcloud_server" "master-1" {
     name = "master-1"
     image = "ubuntu-24.04"
@@ -67,10 +67,6 @@ resource "hcloud_server" "master-1" {
       ipv4_enabled = true
       ipv6_enabled = false
     }
-    #network {
-    #  network_id = hcloud_network.main.id
-    #}
-    #depends_on = [ hcloud_network_subnet.k8s ]
 }
 
 resource "hcloud_server" "worker-1" {
@@ -79,17 +75,10 @@ resource "hcloud_server" "worker-1" {
     server_type = "cx33"
     location = "hel1"
     ssh_keys = [hcloud_ssh_key.pub_key.id]
-#    user_data = templatefile("./cloud-init/cloud-init.yaml.tmpl", {
-#        floating_ip = hcloud_floating_ip.float_ip.ipv4_address
-#    })
     public_net {
       ipv4_enabled = true
       ipv6_enabled = false
     }
-    #network {
-    #  network_id = hcloud_network.main.id
-    #}
-    #depends_on = [ hcloud_network_subnet.k8s ]
 }
 
 resource "hcloud_server" "worker-2" {
@@ -98,17 +87,10 @@ resource "hcloud_server" "worker-2" {
     server_type = "cx33"
     location = "hel1"
     ssh_keys = [hcloud_ssh_key.pub_key.id]
-#    user_data = templatefile("./cloud-init/cloud-init.yaml.tmpl", {
-#        floating_ip = hcloud_floating_ip.float_ip.ipv4_address
-#    })
     public_net {
       ipv4_enabled = true
       ipv6_enabled = false
     }
-    #network {
-    #  network_id = hcloud_network.main.id
-    #}
-    #depends_on = [ hcloud_network_subnet.k8s ]
 }
 
 output "network_id" {
