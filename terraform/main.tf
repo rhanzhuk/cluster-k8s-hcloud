@@ -63,6 +63,7 @@ resource "hcloud_load_balancer_network" "k8s-api-lb-network" {
   load_balancer_id = hcloud_load_balancer.k8s-api-lb.id
   subnet_id = hcloud_network_subnet.k8s.id
   ip = local.k8s_api_priv_ip
+  enable_public_interface = false
 }
 
 resource "hcloud_load_balancer_service" "k8s-api-lb-service" {
@@ -233,6 +234,70 @@ resource "hcloud_server" "bastion" {
       
     }
 }
+
+#firewall rule
+resource "hcloud_firewall" "bastion-fw" {
+  name = "bastion-fw"
+
+  rule {
+    direction = "in"
+    protocol = "tcp"
+    port = "22"
+    source_ips = [
+      "178.42.118.157/32"
+    ]
+  }
+
+  rule {
+    direction = "out"
+    protocol = "tcp"
+    port = "any"
+    destination_ips = ["0.0.0.0/0"]
+  }
+
+  rule {
+    direction = "out"
+    protocol = "udp"
+    port = "any"
+    destination_ips = ["0.0.0.0/0"]
+  }
+  
+}
+
+resource "hcloud_firewall_attachment" "bastion-fw-attach" {
+  firewall_id = hcloud_firewall.bastion-fw.id
+  server_ids = [hcloud_server.bastion.id]
+  
+}
+
+
+resource "hcloud_firewall" "nat-fw" {
+  name = "nat-fw"
+
+  rule {
+    direction = "in"
+    protocol = "tcp"
+    port = 22
+    source_ips = [ 
+      "${local.bastion_ip}/32" ]
+  }
+
+  rule {
+    direction = "in"
+    protocol = "icmp"
+    source_ips = [
+      "${local.bastion_ip}/32"
+    ]
+  }
+  
+}
+
+resource "hcloud_firewall_attachment" "nat-fw-attach" {
+  firewall_id = hcloud_firewall.nat-fw.id
+  server_ids = [ hcloud_server.nat-server.id ]  
+}
+
+#outputs
 
 output "network_id" {
     value = hcloud_network.main.id
