@@ -41,6 +41,7 @@ terraform apply
 ```bash
 cd ../ansible
 ansible-playbook -i inventory.ini playbooks/pre-install.yml
+ansible-playbook -i inventory.ini playbooks/install-cluster-ha-k8s.yml
 ```
 
 ---
