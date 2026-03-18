@@ -46,8 +46,6 @@ locals {
   master_1_priv_ip = "10.0.10.10"
   master_2_priv_ip = "10.0.10.11"
   master_3_priv_ip = "10.0.10.12"
-  # worker_1_priv_ip = "10.0.10.20"
-  # worker_2_priv_ip = "10.0.10.21"
   nat_priv_ip     = "10.0.10.50"
   k8s_api_priv_ip = "10.0.10.40"
   bastion_ip      = "10.0.10.55"
@@ -100,23 +98,6 @@ resource "local_file" "ansible_ini" {
   })
 
 }
-
-
-#resource "local_file" "ansible_ini" {
-#  filename = "${path.module}/../ansible/inventory.ini"
-
-#  content = templatefile("${path.module}/../ansible/inventory.ini.tmpl", {
-#    bastion_ip       = hcloud_server.bastion.ipv4_address,
-#    k8s_api_priv_ip  = local.k8s_api_priv_ip,
-#    master_1_priv_ip = local.master_1_priv_ip,
-#    master_2_priv_ip = local.master_2_priv_ip,
-#    master_3_priv_ip = local.master_3_priv_ip,
-#    worker_1_priv_ip = local.worker_1_priv_ip,
-#    worker_2_priv_ip = local.worker_2_priv_ip
-#  })
-#}
-
-
 
 resource "local_file" "ansible_playbook" {
   filename = "${path.module}/../ansible/playbooks/install-cluster-ha-k8s.yml"
